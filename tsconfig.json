@@ -10,6 +10,7 @@
     "strict": true,
     "noEmit": true,
     "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
     "module": "esnext",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
@@ -23,10 +24,15 @@
     ],
     "paths": {
       "@/*": [
-        "./app/*"
+        "./app/*",
+        "./lib/*"
       ]
     },
-    "target": "ES2017"
+    "target": "ES2017",
+    "types": [
+      "react",
+      "node"
+    ]
   },
   "include": [
     "next-env.d.ts",

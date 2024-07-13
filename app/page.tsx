@@ -1,12 +1,28 @@
 "use client";
 
+import React, { useEffect, useRef, useState, useCallback } from "react";
+import { usePlayer } from "@/lib/usePlayer";
+import { useMicVAD, utils } from "@ricky0123/vad-react";
 import clsx from "clsx";
-import { useActionState, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { EnterIcon, LoadingIcon } from "@/lib/icons";
-import { usePlayer } from "@/lib/usePlayer";
-import { track } from "@vercel/analytics";
-import { useMicVAD, utils } from "@ricky0123/vad-react";
+
+function useActionState<T, D>(
+  action: (prevState: T, data: D) => Promise<T>
+): [T, (data: D) => void, boolean] {
+  const [state, setState] = useState<T>([] as unknown as T);
+  const [isPending, setIsPending] = useState(false);
+
+  const submit = useCallback((data: D) => {
+    setIsPending(true);
+    action(state, data).then((newState) => {
+      setState(newState);
+      setIsPending(false);
+    });
+  }, [action, state]);
+
+  return [state, submit, isPending];
+}
 
 type Message = {
 	role: "user" | "assistant";
@@ -14,43 +30,49 @@ type Message = {
 	latency?: number;
 };
 
+// Declare module augmentations for missing types
+declare module "react" {
+  interface JSX {
+    IntrinsicElements: any;
+  }
+}
+
 export default function Home() {
-	const [input, setInput] = useState("");
-	const inputRef = useRef<HTMLInputElement>(null);
-	const player = usePlayer();
+  const [input, setInput] = useState<string>("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const player = usePlayer();
 
-	const vad = useMicVAD({
-		startOnLoad: true,
-		onSpeechEnd: (audio) => {
-			player.stop();
-			const wav = utils.encodeWAV(audio);
-			const blob = new Blob([wav], { type: "audio/wav" });
-			submit(blob);
-			const isFirefox = navigator.userAgent.includes("Firefox");
-			console.log("isFirefox", isFirefox);
-			if (isFirefox) vad.pause();
-		},
-		workletURL: "/vad.worklet.bundle.min.js",
-		modelURL: "/silero_vad.onnx",
-		positiveSpeechThreshold: 0.6,
-		minSpeechFrames: 4,
-		ortConfig(ort) {
-			const isSafari = /^((?!chrome|android).)*safari/i.test(
-				navigator.userAgent
-			);
+  const vad = useMicVAD({
+    startOnLoad: true,
+    onSpeechEnd: (audio: Float32Array) => {
+      player.stop();
+      const wav = utils.encodeWAV(audio);
+      const blob = new Blob([wav], { type: "audio/wav" });
+      submit(blob);
+      const isFirefox = navigator.userAgent.includes("Firefox");
+      console.log("isFirefox", isFirefox);
+      if (isFirefox) vad.pause();
+    },
+    workletURL: "/vad.worklet.bundle.min.js",
+    modelURL: "/silero_vad.onnx",
+    positiveSpeechThreshold: 0.6,
+    minSpeechFrames: 4,
+    ortConfig: (ort: any) => {
+      const isSafari = /^((?!chrome|android).)*safari/i.test(
+        navigator.userAgent
+      );
 
-			ort.env.wasm = {
-				wasmPaths: {
-					"ort-wasm-simd-threaded.wasm":
-						"/ort-wasm-simd-threaded.wasm",
-					"ort-wasm-simd.wasm": "/ort-wasm-simd.wasm",
-					"ort-wasm.wasm": "/ort-wasm.wasm",
-					"ort-wasm-threaded.wasm": "/ort-wasm-threaded.wasm",
-				},
-				numThreads: isSafari ? 1 : 4,
-			};
-		},
-	});
+      ort.env.wasm = {
+        wasmPaths: {
+          "ort-wasm-simd-threaded.wasm": "/ort-wasm-simd-threaded.wasm",
+          "ort-wasm-simd.wasm": "/ort-wasm-simd.wasm",
+          "ort-wasm.wasm": "/ort-wasm.wasm",
+          "ort-wasm-threaded.wasm": "/ort-wasm-threaded.wasm",
+        },
+        numThreads: isSafari ? 1 : 4,
+      };
+    },
+  });
 
 	useEffect(() => {
 		function keyDown(e: KeyboardEvent) {
@@ -65,15 +87,13 @@ export default function Home() {
 	const [messages, submit, isPending] = useActionState<
 		Array<Message>,
 		string | Blob
-	>(async (prevMessages, data) => {
+	>(async (prevMessages: Array<Message>, data: string | Blob) => {
 		const formData = new FormData();
 
 		if (typeof data === "string") {
 			formData.append("input", data);
-			track("Text input");
 		} else {
 			formData.append("input", data, "audio.wav");
-			track("Speech input");
 		}
 
 		for (const message of prevMessages) {
@@ -123,9 +143,9 @@ export default function Home() {
 				latency,
 			},
 		];
-	}, []);
+	});
 
-	function handleFormSubmit(e: React.FormEvent) {
+	function handleFormSubmit(e: React.FormEvent<HTMLFormElement>) {
 		e.preventDefault();
 		submit(input);
 	}
@@ -144,7 +164,7 @@ export default function Home() {
 					required
 					placeholder="Ask me anything"
 					value={input}
-					onChange={(e) => setInput(e.target.value)}
+					onChange={(e: React.ChangeEvent<HTMLInputElement>) => setInput(e.target.value)}
 					ref={inputRef}
 				/>
 
@@ -212,11 +232,14 @@ export default function Home() {
 	);
 }
 
-function A(props: any) {
+function A({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
 	return (
 		<a
+			href={href}
 			{...props}
 			className="text-neutral-500 dark:text-neutral-500 hover:underline font-medium"
-		/>
+		>
+			{children}
+		</a>
 	);
 }
