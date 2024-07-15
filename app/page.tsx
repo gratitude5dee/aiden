@@ -9,7 +9,7 @@ import { track } from "@vercel/analytics";
 import { useMicVAD, utils } from "@ricky0123/vad-react";
 
 type Message = {
-	role: "user" | "assistant";
+	role: "user" | "assistant" | "thought";
 	content: string;
 	latency?: number;
 };
@@ -93,6 +93,9 @@ export default function Home() {
 		const text = decodeURIComponent(
 			response.headers.get("X-Response") || ""
 		);
+		const thoughts = JSON.parse(decodeURIComponent(
+			response.headers.get("X-Thoughts") || "[]"
+		));
 
 		if (!response.ok || !transcript || !text || !response.body) {
 			if (response.status === 429) {
@@ -117,6 +120,10 @@ export default function Home() {
 				role: "user",
 				content: transcript,
 			},
+			...thoughts.map((thought: string) => ({
+				role: "thought" as const,
+				content: thought,
+			})),
 			{
 				role: "assistant",
 				content: text,
@@ -159,15 +166,19 @@ export default function Home() {
 			</form>
 
 			<div className="text-neutral-400 dark:text-neutral-600 pt-4 text-center max-w-xl text-balance min-h-28 space-y-4">
-				{messages.length > 0 && (
-					<p>
-						{messages.at(-1)?.content}
-						<span className="text-xs font-mono text-neutral-300 dark:text-neutral-700">
-							{" "}
-							({messages.at(-1)?.latency}ms)
-						</span>
-					</p>
-				)}
+				{messages.map((message, index) => (
+					<div key={index} className={`message ${message.role}`}>
+						{message.role === "thought" && <span className="thought-indicator">💭</span>}
+						<p>
+							{message.content}
+							{message.latency && (
+								<span className="text-xs font-mono text-neutral-300 dark:text-neutral-700">
+									{" "}({message.latency}ms)
+								</span>
+							)}
+						</p>
+					</div>
+				))}
 
 				{messages.length === 0 && (
 					<>
