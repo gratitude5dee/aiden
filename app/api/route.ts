@@ -3,8 +3,14 @@ import { headers } from "next/headers";
 import { z } from "zod";
 import { zfd } from "zod-form-data";
 import { unstable_after as after } from "next/server";
+import { config } from "dotenv";
+import { NextRequest } from "next/server";
+import "@types/node";
 
-const groq = new Groq();
+config(); // Load environment variables
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY,
+});
 
 const schema = zfd.formData({
 	input: z.union([zfd.text(), zfd.file()]),
@@ -29,6 +35,29 @@ export async function POST(request: Request) {
 
 	console.timeEnd(
 		"transcribe " + request.headers.get("x-vercel-id") || "local"
+	);
+	console.time(
+		"thought generation " + request.headers.get("x-vercel-id") || "local"
+	);
+
+	const thoughtCompletion = await groq.chat.completions.create({
+		model: "llama3-8b-8192",
+		messages: [
+			{
+				role: "system",
+				content: `Generate 2-3 brief internal thoughts to plan and solve in response to the user's input. Each thought should be prefixed with "THOUGHT:".`,
+			},
+			{
+				role: "user",
+				content: transcript,
+			},
+		],
+	});
+
+	const thoughts = thoughtCompletion.choices[0].message.content.split("THOUGHT:").filter(Boolean);
+
+	console.timeEnd(
+		"thought generation " + request.headers.get("x-vercel-id") || "local"
 	);
 	console.time(
 		"text completion " + request.headers.get("x-vercel-id") || "local"
@@ -68,7 +97,7 @@ export async function POST(request: Request) {
 		"cartesia request " + request.headers.get("x-vercel-id") || "local"
 	);
 
-	const voice = await fetch("https://api.cartesia.ai/tts/bytes", {
+	const voice = await fetch("https://api.cartesia.ai/v0/audio/sse", {
 		method: "POST",
 		headers: {
 			"Cartesia-Version": "2024-06-30",
@@ -110,6 +139,7 @@ export async function POST(request: Request) {
 		headers: {
 			"X-Transcript": encodeURIComponent(transcript),
 			"X-Response": encodeURIComponent(response),
+			"X-Thoughts": encodeURIComponent(JSON.stringify(thoughts)),
 		},
 	});
 }
